@@ -31,11 +31,15 @@ public class MainActivity extends ActionBarActivity {
     String msgLog = "";
 
     EditText editTextSay;
+    EditText editTextUserName, editTextAddress;
+    Button buttonConnect;
 
 
     Button buttonSend;
     Button buttonDisconnect;
     ChatClientThread chatClientThread = null;
+    ChatClientThread1 chatClientThread1 = null;
+
 
 
     ServerSocket serverSocket;
@@ -47,6 +51,13 @@ public class MainActivity extends ActionBarActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        editTextUserName = (EditText) findViewById(R.id.username);
+        editTextAddress = (EditText) findViewById(R.id.address);
+        buttonConnect = (Button) findViewById(R.id.connect);
+
+
+
+
         loginPanel = (LinearLayout)findViewById(R.id.loginpanel);
         chatPanel = (LinearLayout)findViewById(R.id.chatpanel);
         infoIp = (TextView) findViewById(R.id.infoip);
@@ -54,6 +65,7 @@ public class MainActivity extends ActionBarActivity {
         chatMsg = (TextView) findViewById(R.id.chatmsg);
         buttonSend = (Button)findViewById(R.id.send);
         buttonDisconnect = (Button) findViewById(R.id.disconnect);
+        buttonConnect.setOnClickListener(buttonConnectOnClickListener);
 
         infoIp.setText(getIpAddress());
 
@@ -73,10 +85,16 @@ public class MainActivity extends ActionBarActivity {
 
         @Override
         public void onClick(View v) {
-            if(chatClientThread==null){
+            if(chatClientThread==null && chatClientThread1==null){
                 return;
+            } if(chatClientThread!=null){
+                chatClientThread.disconnect();
+
+            }if(chatClientThread1!=null){
+                chatClientThread1.disconnect();
+
             }
-            chatClientThread.disconnect();
+
         }
 
     };
@@ -89,12 +107,48 @@ public class MainActivity extends ActionBarActivity {
                 return;
             }
 
-            if(chatClientThread==null){
+            if(chatClientThread==null && chatClientThread1==null){
+                return;
+            } if(chatClientThread!=null){
+                chatClientThread.sendMsg(editTextSay.getText().toString() + "\n");
+
+            }if(chatClientThread1!=null){
+                chatClientThread1.sendMsg(editTextSay.getText().toString() + "\n");
+
+            }
+
+
+            editTextSay.setText("");
+        }
+
+    };
+
+    View.OnClickListener buttonConnectOnClickListener = new View.OnClickListener() {
+
+        @Override
+        public void onClick(View v) {
+            String textUserName = editTextUserName.getText().toString();
+            if (textUserName.equals("")) {
+                Toast.makeText(MainActivity.this, "Enter User Name",
+                        Toast.LENGTH_LONG).show();
                 return;
             }
 
-            chatClientThread.sendMsg(editTextSay.getText().toString() + "\n");
-            editTextSay.setText("");
+            String textAddress = editTextAddress.getText().toString();
+            if (textAddress.equals("")) {
+                Toast.makeText(MainActivity.this, "Enter Addresse",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+
+            msgLog = "";
+            chatMsg.setText(msgLog);
+            loginPanel.setVisibility(View.GONE);
+            chatPanel.setVisibility(View.VISIBLE);
+
+            chatClientThread1 = new ChatClientThread1(
+                    textUserName, textAddress, SocketServerPORT);
+            chatClientThread1.start();
         }
 
     };
@@ -321,6 +375,136 @@ public class MainActivity extends ActionBarActivity {
         }
 
         return ip;
+    }
+
+    private class ChatClientThread1 extends Thread {
+
+        String name;
+        String dstAddress;
+        int dstPort;
+
+        String msgToSend = "";
+        boolean goOut = false;
+
+        ChatClientThread1(String name, String address, int port) {
+            this.name = name;
+            dstAddress = address;
+            dstPort = port;
+        }
+
+        @Override
+        public void run() {
+            Socket socket = null;
+            DataOutputStream dataOutputStream = null;
+            DataInputStream dataInputStream = null;
+
+            try {
+                socket = new Socket(dstAddress, dstPort);
+                dataOutputStream = new DataOutputStream(
+                        socket.getOutputStream());
+                dataInputStream = new DataInputStream(socket.getInputStream());
+                dataOutputStream.writeUTF(name + "\n");
+                dataOutputStream.flush();
+
+                while (!goOut) {
+                    if (socket != null) {
+                        if (dataInputStream.available() > 0) {
+                            msgLog += dataInputStream.readUTF();
+
+                            MainActivity.this.runOnUiThread(new Runnable() {
+
+                                @Override
+                                public void run() {
+                                    chatMsg.setText(msgLog);
+                                }
+                            });
+                        }
+
+                        if (!msgToSend.equals("")) {
+                            dataOutputStream.writeUTF(msgToSend);
+                            dataOutputStream.flush();
+                            msgToSend = "";
+                        }
+                    } else {
+                        Toast.makeText(MainActivity.this,
+                                "Client left", Toast.LENGTH_LONG).show();
+                        break;
+
+                    }
+                }
+
+            } catch (UnknownHostException e) {
+                e.printStackTrace();
+                final String eString = e.toString();
+                MainActivity.this.runOnUiThread(new Runnable() {
+
+                    @Override
+                    public void run() {
+                        Toast.makeText(MainActivity.this,
+                                "Client left", Toast.LENGTH_LONG).show();
+                    }
+
+                });
+            } catch (IOException e) {
+                e.printStackTrace();
+                final String eString = e.toString();
+                MainActivity.this.runOnUiThread(new Runnable() {
+
+                    @Override
+                    public void run() {
+                        Toast.makeText(MainActivity.this,
+                                "Client left", Toast.LENGTH_LONG).show();
+                    }
+
+                });
+            } finally {
+                if (socket != null) {
+                    try {
+                        socket.close();
+                    } catch (IOException e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
+                }
+
+                if (dataOutputStream != null) {
+                    try {
+                        dataOutputStream.close();
+                    } catch (IOException e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
+                }
+
+                if (dataInputStream != null) {
+                    try {
+                        dataInputStream.close();
+                    } catch (IOException e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
+                }
+
+                MainActivity.this.runOnUiThread(new Runnable() {
+
+                    @Override
+                    public void run() {
+                        loginPanel.setVisibility(View.VISIBLE);
+                        chatPanel.setVisibility(View.GONE);
+                    }
+
+                });
+            }
+
+        }
+
+        private void sendMsg(String msg){
+            msgToSend = msg;
+        }
+
+        private void disconnect(){
+            goOut = true;
+        }
     }
 
 
